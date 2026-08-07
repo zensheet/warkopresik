@@ -190,7 +190,7 @@
   </header>
 
   <!-- ================= MAIN ================= -->
-  <main class="flex-1 overflow-y-auto scroll-thin bg-paper pb-24">
+  <main id="main-scroll" class="flex-1 overflow-y-auto scroll-thin bg-paper pb-24">
 
     <!-- ---------- TAB: KASIR ---------- -->
     <section data-tab-panel="kasir" class="active px-4 pt-4">
@@ -666,7 +666,23 @@ function setTab(tab){
   document.getElementById("cart-footer").style.display = tab === "kasir" ? "block" : "none";
   document.getElementById("header-sub").textContent = tab === "kasir" ? "Kasir & Order" : "Dashboard Transaksi";
   if(tab === "dashboard") renderDashboard();
+  adjustScrollPadding();
 }
+
+/* Keep scrollable content clear of the floating cart footer + bottom nav,
+   measured live so it stays correct on any screen size / text-wrap. */
+function adjustScrollPadding(){
+  requestAnimationFrame(()=>{
+    const main = document.getElementById("main-scroll");
+    const nav = document.querySelector("nav.no-print");
+    const footer = document.getElementById("cart-footer");
+    const navH = nav ? nav.offsetHeight : 64;
+    const footerVisible = footer && footer.style.display !== "none";
+    const footerH = footerVisible ? footer.offsetHeight : 0;
+    main.style.paddingBottom = (navH + footerH + 16) + "px";
+  });
+}
+window.addEventListener("resize", adjustScrollPadding);
 document.querySelectorAll(".tab-btn").forEach(b=>{
   b.addEventListener("click", ()=> setTab(b.dataset.tabBtn));
 });
@@ -849,6 +865,7 @@ function renderCart(){
   const total = cartTotal();
   document.getElementById("cart-total").textContent = formatRupiah(total);
   document.getElementById("btn-save").disabled = state.cart.length === 0;
+  adjustScrollPadding();
 }
 
 /* ---- custom item modal ---- */

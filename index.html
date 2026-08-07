@@ -200,16 +200,18 @@
           class="mt-1.5 w-full rounded-xl border border-brand-800/10 bg-white px-3.5 py-2.5 text-[14px] font-semibold placeholder:font-normal placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
       </label>
 
-      <label class="block mb-4">
+      <div id="full-menu-wrap" class="relative mb-4">
         <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Menu Lengkap</span>
         <div class="relative mt-1.5">
-          <select id="full-menu-select"
-            class="w-full appearance-none rounded-xl border border-brand-800/10 bg-white pl-3.5 pr-9 py-2.5 text-[13.5px] font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
-            <option value="" selected disabled>Cari &amp; pilih dari semua menu&hellip;</option>
-          </select>
-          <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-soft" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="full-menu-search" type="text" autocomplete="off" inputmode="search" placeholder="Ketik nama menu&hellip; (mis. kopi, mie, es)"
+            class="w-full rounded-xl border border-brand-800/10 bg-white pl-9 pr-8 py-2.5 text-[13.5px] font-semibold text-ink placeholder:font-normal placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
+          <button id="full-menu-clear" type="button" aria-label="Hapus pencarian" class="hidden absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-paper text-ink-soft flex items-center justify-center active:scale-90 transition">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
         </div>
-      </label>
+        <div id="full-menu-results" class="hidden absolute left-0 right-0 z-30 mt-1.5 max-h-72 overflow-y-auto scroll-thin bg-white border border-brand-900/10 rounded-xl shadow-lift-lg"></div>
+      </div>
 
       <div class="flex items-center justify-between mb-2">
         <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Menu Cepat</span>
@@ -219,6 +221,7 @@
         </button>
       </div>
       <div id="product-grid" class="grid grid-cols-3 gap-2.5 mb-5"></div>
+
 
       <div class="flex items-center justify-between mb-2">
         <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Keranjang</span>
@@ -688,24 +691,79 @@ function renderProductGrid(){
   });
 }
 
-/* ================= KASIR: DROPDOWN MENU LENGKAP ================= */
-function renderFullMenuSelect(){
-  const select = document.getElementById("full-menu-select");
-  const optionsHtml = FULL_MENU.map(group => `
-    <optgroup label="${escapeHtml(group.category)}">
-      ${group.items.map((item, ii) => {
-        const id = "menu-" + FULL_MENU.indexOf(group) + "-" + ii;
-        return `<option value="${id}">${escapeHtml(item.name)} — ${formatRupiah(item.price)}</option>`;
-      }).join("")}
-    </optgroup>
+/* ================= KASIR: PENCARIAN MENU LENGKAP (typeahead) ================= */
+function highlightMatch(name, q){
+  if(!q) return escapeHtml(name);
+  const idx = name.toLowerCase().indexOf(q);
+  if(idx === -1) return escapeHtml(name);
+  const before = escapeHtml(name.slice(0, idx));
+  const match = escapeHtml(name.slice(idx, idx + q.length));
+  const after = escapeHtml(name.slice(idx + q.length));
+  return `${before}<span class="text-brand-700 bg-brand-100/70 rounded-sm">${match}</span>${after}`;
+}
+
+function renderFullMenuResults(query){
+  const results = document.getElementById("full-menu-results");
+  const q = query.trim().toLowerCase();
+  const matches = q ? FULL_MENU_FLAT.filter(m => m.name.toLowerCase().includes(q)) : FULL_MENU_FLAT;
+
+  if(matches.length === 0){
+    results.innerHTML = `<div class="px-3.5 py-6 text-center text-[12px] text-ink-soft">Menu &quot;${escapeHtml(query)}&quot; tidak ditemukan</div>`;
+    results.classList.remove("hidden");
+    return;
+  }
+
+  const grouped = [];
+  matches.forEach(m=>{
+    let bucket = grouped.find(g => g.category === m.category);
+    if(!bucket){ bucket = { category: m.category, items: [] }; grouped.push(bucket); }
+    bucket.items.push(m);
+  });
+
+  results.innerHTML = grouped.map(g => `
+    <div class="px-3.5 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft/70 bg-paper sticky top-0">${escapeHtml(g.category)}</div>
+    ${g.items.map(item => `
+      <button data-menu-id="${item.id}" class="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left active:bg-brand-50 transition border-b border-brand-900/5 last:border-0">
+        <span class="text-[12.5px] font-semibold truncate">${highlightMatch(item.name, q)}</span>
+        <span class="text-[11px] num font-bold text-brand-700 shrink-0">${formatRupiah(item.price)}</span>
+      </button>
+    `).join("")}
   `).join("");
-  select.insertAdjacentHTML("beforeend", optionsHtml);
-  select.addEventListener("change", ()=>{
-    if(!select.value) return;
-    const item = FULL_MENU_FLAT.find(m => m.id === select.value);
-    addToCart(select.value);
-    select.value = "";
-    if(item) toast(`${item.name} ditambahkan ke keranjang`);
+  results.classList.remove("hidden");
+
+  results.querySelectorAll("[data-menu-id]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.menuId;
+      const item = FULL_MENU_FLAT.find(m => m.id === id);
+      addToCart(id);
+      searchInput.value = "";
+      results.classList.add("hidden");
+      clearBtn.classList.add("hidden");
+      if(item) toast(`${item.name} ditambahkan ke keranjang`);
+    });
+  });
+}
+
+let searchInput, clearBtn;
+function setupFullMenuSearch(){
+  searchInput = document.getElementById("full-menu-search");
+  clearBtn = document.getElementById("full-menu-clear");
+
+  searchInput.addEventListener("focus", ()=> renderFullMenuResults(searchInput.value));
+  searchInput.addEventListener("input", ()=>{
+    renderFullMenuResults(searchInput.value);
+    clearBtn.classList.toggle("hidden", !searchInput.value);
+  });
+  clearBtn.addEventListener("click", ()=>{
+    searchInput.value = "";
+    clearBtn.classList.add("hidden");
+    renderFullMenuResults("");
+    searchInput.focus();
+  });
+  document.addEventListener("click", (e)=>{
+    if(!document.getElementById("full-menu-wrap").contains(e.target)){
+      document.getElementById("full-menu-results").classList.add("hidden");
+    }
   });
 }
 
@@ -1108,7 +1166,7 @@ document.querySelectorAll(".modal-backdrop").forEach(m=>{
 function init(){
   loadState();
   renderProductGrid();
-  renderFullMenuSelect();
+  setupFullMenuSearch();
   renderCart();
   renderDashboardStatsOnly();
   setTab("kasir");

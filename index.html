@@ -200,6 +200,17 @@
           class="mt-1.5 w-full rounded-xl border border-brand-800/10 bg-white px-3.5 py-2.5 text-[14px] font-semibold placeholder:font-normal placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
       </label>
 
+      <label class="block mb-4">
+        <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Menu Lengkap</span>
+        <div class="relative mt-1.5">
+          <select id="full-menu-select"
+            class="w-full appearance-none rounded-xl border border-brand-800/10 bg-white pl-3.5 pr-9 py-2.5 text-[13.5px] font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
+            <option value="" selected disabled>Cari &amp; pilih dari semua menu&hellip;</option>
+          </select>
+          <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-soft" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </label>
+
       <div class="flex items-center justify-between mb-2">
         <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Menu Cepat</span>
         <button id="btn-custom-item" class="text-[11px] font-bold text-brand-700 flex items-center gap-1 active:opacity-60">
@@ -467,16 +478,108 @@ const MAX_CACHE = 100;
 const PAGE_SIZE = 10;
 
 const PRODUCTS = [
-  { id:"kopi-hitam",   name:"Kopi Hitam",     price:5000,  icon:"☕" },
-  { id:"kopi-susu",    name:"Kopi Susu",      price:6000,  icon:"🥛" },
-  { id:"es-teh",       name:"Es Teh Manis",   price:4000,  icon:"🧊" },
-  { id:"teh-hangat",   name:"Teh Hangat",     price:4000,  icon:"🍵" },
-  { id:"gorengan",     name:"Gorengan",       price:2000,  icon:"🍢" },
-  { id:"mie-instan",   name:"Mie Instan",     price:8000,  icon:"🍜" },
-  { id:"nasi-goreng",  name:"Nasi Goreng",    price:13000, icon:"🍚" },
-  { id:"roti-bakar",   name:"Roti Bakar",     price:9000,  icon:"🍞" },
-  { id:"rokok",        name:"Rokok Batangan", price:2500,  icon:"🚬" },
+  { id:"kopi-panas",     name:"Kopi Panas",              price:5000,  icon:"☕" },
+  { id:"es-teh-manis",   name:"Es Teh Manis",            price:5000,  icon:"🧊" },
+  { id:"es-milo",        name:"Es Milo",                 price:10000, icon:"🥤" },
+  { id:"es-cappuccino",  name:"Es Good Day Cappuccino",  price:8000,  icon:"🧋" },
+  { id:"indomie-telur",  name:"Indomie + Telur",         price:13000, icon:"🍜" },
+  { id:"mie-tektek",     name:"Mie Tek-tek",             price:17000, icon:"🍝" },
+  { id:"nasi-goreng",    name:"Nasi Goreng",             price:17000, icon:"🍚" },
+  { id:"roti-bakar-cok", name:"Roti Bakar Coklat",       price:13000, icon:"🍞" },
+  { id:"pisang-bakar-cok", name:"Pisang Bakar Coklat",   price:13000, icon:"🍌" },
 ];
+
+// Katalog lengkap dari papan menu Warkop Resik (foto Menu Minuman & Menu Makanan)
+const FULL_MENU = [
+  { category:"Minuman", items:[
+    { name:"Kopi Panas",                         price:5000 },
+    { name:"Teh Manis Panas",                    price:4000 },
+    { name:"Es Teh Manis",                       price:5000 },
+    { name:"Es Teh Tawar",                       price:3000 },
+    { name:"Nutrisari",                          price:8000 },
+    { name:"Es Good Day Cappuccino",             price:8000 },
+    { name:"Es Torabika",                        price:8000 },
+    { name:"Es Teh Tarik",                       price:8000 },
+    { name:"Es Creamy Latte",                    price:8000 },
+    { name:"Es Susu Frisian Flag",               price:8000 },
+    { name:"Es Good Day Freeze",                 price:8000 },
+    { name:"Es Drink Beng-Beng",                 price:8000 },
+    { name:"Es Milo",                            price:10000 },
+    { name:"Es Ovaltine",                        price:8000 },
+    { name:"Es Dancow",                          price:15000 },
+    { name:"Es Good Day Mocca",                  price:5000 },
+    { name:"Es Susu Soda",                       price:8000 },
+    { name:"Extra Joss / Kuku Bima",             price:8000 },
+    { name:"Extra Joss + Susu",                  price:8000 },
+    { name:"Kuku Bima + Susu",                   price:8000 },
+    { name:"Es Jeruk",                           price:8000 },
+    { name:"Jeruk Panas",                        price:8000 },
+  ]},
+  { category:"Bubur", items:[
+    { name:"Bubur Kacang Hijau + Roti",          price:10000 },
+    { name:"Bubur Kacang Hijau",                 price:8000 },
+  ]},
+  { category:"Indomie", items:[
+    { name:"Indomie + Telur",                    price:13000 },
+    { name:"Indomie Tanpa Telur",                price:9000 },
+    { name:"Indomie Dobel Telur",                price:23000 },
+    { name:"Indomie Telur Kornet",                price:18000 },
+    { name:"Indomie Telur + Kornet + Keju",      price:23000 },
+  ]},
+  { category:"Mie & Kwetiau", items:[
+    { name:"Mie Tek-tek",                        price:17000 },
+    { name:"Mie Dog-dog",                        price:17000 },
+    { name:"Mie Nyemek",                         price:17000 },
+    { name:"Mie Nyemek + Telur Ceplok/Dadar",    price:23000 },
+    { name:"Mie Bangladesh",                     price:17000 },
+    { name:"Mie Magelangan",                     price:17000 },
+    { name:"Mie Omelet",                         price:15000 },
+    { name:"Kwetiau",                            price:17000 },
+  ]},
+  { category:"Nasi", items:[
+    { name:"Nasi Goreng",                        price:17000 },
+    { name:"Nasi Putih",                         price:5000 },
+    { name:"Nasi Telur + Kornet",                price:17000 },
+    { name:"Nasi Telur Dadar",                   price:12000 },
+    { name:"Nasi Sarden",                        price:22000 },
+    { name:"Nasi Orak Arik",                     price:17000 },
+  ]},
+  { category:"Tambahan", items:[
+    { name:"Telur 1/2 Matang 2 biji",            price:12000 },
+  ]},
+  { category:"Pancong", items:[
+    { name:"Pancong Crunchy",                    price:13000 },
+    { name:"Pancong Tiramisu",                   price:13000 },
+    { name:"Pancong Oreo",                       price:13000 },
+    { name:"Pancong Coklat",                     price:13000 },
+    { name:"Pancong Keju",                       price:13000 },
+    { name:"Pancong Coklat + Keju",              price:15000 },
+  ]},
+  { category:"Roti Bakar", items:[
+    { name:"Roti Bakar Coklat",                  price:13000 },
+    { name:"Roti Bakar Keju",                    price:13000 },
+    { name:"Roti Bakar Coklat + Keju",           price:15000 },
+    { name:"Roti Bakar Oreo",                    price:13000 },
+    { name:"Roti Bakar Crunchy",                 price:13000 },
+    { name:"Roti Bakar Tiramisu",                price:13000 },
+  ]},
+  { category:"Pisang Bakar", items:[
+    { name:"Pisang Bakar Coklat",                price:13000 },
+    { name:"Pisang Bakar Keju",                  price:13000 },
+    { name:"Pisang Bakar Coklat + Keju",         price:15000 },
+    { name:"Pisang Bakar Crunchy",               price:13000 },
+  ]},
+];
+
+// versi flat + id unik, dipakai untuk lookup saat item dipilih dari dropdown
+const FULL_MENU_FLAT = FULL_MENU.flatMap((group, gi) =>
+  group.items.map((item, ii) => ({
+    id: "menu-" + gi + "-" + ii,
+    name: item.name,
+    price: item.price,
+    category: group.category,
+  }))
+);
 
 /* ---------------- state ---------------- */
 const state = {
@@ -585,6 +688,27 @@ function renderProductGrid(){
   });
 }
 
+/* ================= KASIR: DROPDOWN MENU LENGKAP ================= */
+function renderFullMenuSelect(){
+  const select = document.getElementById("full-menu-select");
+  const optionsHtml = FULL_MENU.map(group => `
+    <optgroup label="${escapeHtml(group.category)}">
+      ${group.items.map((item, ii) => {
+        const id = "menu-" + FULL_MENU.indexOf(group) + "-" + ii;
+        return `<option value="${id}">${escapeHtml(item.name)} — ${formatRupiah(item.price)}</option>`;
+      }).join("")}
+    </optgroup>
+  `).join("");
+  select.insertAdjacentHTML("beforeend", optionsHtml);
+  select.addEventListener("change", ()=>{
+    if(!select.value) return;
+    const item = FULL_MENU_FLAT.find(m => m.id === select.value);
+    addToCart(select.value);
+    select.value = "";
+    if(item) toast(`${item.name} ditambahkan ke keranjang`);
+  });
+}
+
 function addToCart(productId, customItem){
   let item;
   if(customItem){
@@ -594,7 +718,8 @@ function addToCart(productId, customItem){
     const existing = state.cart.find(c => c.id === productId);
     if(existing){ existing.qty += 1; }
     else{
-      const p = PRODUCTS.find(p=>p.id===productId);
+      const p = PRODUCTS.find(p=>p.id===productId) || FULL_MENU_FLAT.find(p=>p.id===productId);
+      if(!p) return;
       state.cart.push({ id:p.id, name:p.name, price:p.price, qty:1 });
     }
   }
@@ -983,6 +1108,7 @@ document.querySelectorAll(".modal-backdrop").forEach(m=>{
 function init(){
   loadState();
   renderProductGrid();
+  renderFullMenuSelect();
   renderCart();
   renderDashboardStatsOnly();
   setTab("kasir");

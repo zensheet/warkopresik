@@ -255,12 +255,18 @@
         </div>
       </div>
 
-      <div class="flex items-center justify-between mb-2.5 gap-2">
-        <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft truncate">Riwayat &mdash; <span id="dash-date-label">Hari Ini</span></span>
-        <button id="btn-sync" class="shrink-0 flex items-center gap-1.5 text-[11.5px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition">
-          <svg id="sync-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-          Sinkron
-        </button>
+      <div class="mb-2.5">
+        <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Riwayat &mdash; <span id="dash-date-label">Hari Ini</span></span>
+        <div class="flex items-center gap-2 mt-2">
+          <button id="btn-push" class="flex-1 flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-2.5 py-2 rounded-lg active:scale-95 transition">
+            <svg id="push-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+            Push
+          </button>
+          <button id="btn-pull" class="flex-1 flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-2.5 py-2 rounded-lg active:scale-95 transition">
+            <svg id="pull-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></svg>
+            Pull
+          </button>
+        </div>
       </div>
 
       <div id="tx-list" class="space-y-2"></div>
@@ -451,7 +457,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <p class="text-[11.5px] text-ink-soft mb-3 leading-relaxed">Buat Google Sheets bernama <span class="font-bold">"Database Warkop Resik"</span> dengan tab <span class="font-bold">"Transaksi"</span>, lalu tempel kode ini di Extensions &rsaquo; Apps Script dan deploy sebagai Web App (akses: Anyone).</p>
+    <p class="text-[11.5px] text-ink-soft mb-3 leading-relaxed">Buat Google Sheets bernama <span class="font-bold">"Database Warkop Resik"</span> dengan tab <span class="font-bold">"Transaksi"</span>, lalu tempel kode ini di Extensions &rsaquo; Apps Script dan deploy sebagai Web App (Execute as: <span class="font-bold">Me</span>, Who has access: <span class="font-bold">Anyone</span>). Kalau mengubah kode nanti, wajib <span class="font-bold">Deploy &rsaquo; Manage deployments &rsaquo; New version</span> supaya perubahan aktif.</p>
     <pre class="bg-ink text-brand-100 text-[10.5px] leading-relaxed rounded-xl p-3.5 overflow-x-auto num" id="gas-code">function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet()
     .getSheetByName('Transaksi');
@@ -485,6 +491,15 @@ function doGet(e) {
       total: r[4]
     };
   }).reverse();
+
+  // App menarik data lewat JSONP (bukan fetch biasa) supaya tidak
+  // diblokir CORS saat diakses dari device/domain lain.
+  var cb = e.parameter.callback;
+  if (cb) {
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify(result) + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
   return ContentService.createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
 }</pre>
@@ -990,14 +1005,53 @@ function sendToSheet(tx){
 /* Pull rows back from the Google Sheet (via doGet) and merge any that
    aren't already cached locally. Sheet-origin rows only carry a text
    summary of items (not per-item price breakdown). */
+/* JSONP request — loads the response via a <script> tag instead of fetch(),
+   which sidesteps the CORS failures that Apps Script's GET endpoint can hit
+   when called cross-origin (fetch works fine for POST because we use
+   mode:"no-cors" there and never read the response). */
+function jsonpRequest(url, timeoutMs){
+  return new Promise((resolve, reject)=>{
+    const cbName = "wrJsonp_" + Date.now() + "_" + Math.floor(Math.random()*1e6);
+    const script = document.createElement("script");
+    let done = false;
+    const timer = setTimeout(()=>{
+      if(done) return;
+      done = true;
+      cleanup();
+      reject(new Error("timeout"));
+    }, timeoutMs || 12000);
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[cbName];
+      script.remove();
+    }
+    window[cbName] = (data)=>{
+      if(done) return;
+      done = true;
+      cleanup();
+      resolve(data);
+    };
+    script.onerror = ()=>{
+      if(done) return;
+      done = true;
+      cleanup();
+      reject(new Error("Gagal memuat dari webhook (cek URL / deployment)"));
+    };
+    const sep = url.includes("?") ? "&" : "?";
+    script.src = url + sep + "callback=" + encodeURIComponent(cbName);
+    document.body.appendChild(script);
+  });
+}
+
 async function pullFromSheet(){
   const url = state.settings.webhookUrl;
   if(!url) return { ok:false, added:0, reason:"no-url" };
   try{
-    const res = await fetch(url, { method:"GET" });
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const remote = await res.json();
-    if(!Array.isArray(remote)) throw new Error("format tidak sesuai");
+    const remote = await jsonpRequest(url);
+    if(!Array.isArray(remote)){
+      if(remote && remote.ok === false) throw new Error(remote.error || "GAS mengembalikan error");
+      throw new Error("format tidak sesuai — pastikan doGet() sudah versi terbaru");
+    }
 
     const localIds = new Set(state.transactions.map(t=>t.id));
     let added = 0;
@@ -1137,34 +1191,52 @@ document.getElementById("dash-date-today").addEventListener("click", ()=>{
   renderDashboard();
 });
 
-/* ---- sync button ---- */
-document.getElementById("btn-sync").addEventListener("click", async ()=>{
+/* ---- push button: kirim transaksi lokal yang belum tersinkron ---- */
+document.getElementById("btn-push").addEventListener("click", async ()=>{
   if(!state.settings.webhookUrl){
     toast("Atur URL webhook di Pengaturan dulu", "warn");
     return;
   }
-  const icon = document.getElementById("sync-icon");
+  const icon = document.getElementById("push-icon");
   icon.classList.add("spin");
 
-  // 1) push: kirim transaksi lokal yang belum tersinkron
   const pending = state.transactions.filter(t => !t.synced);
+  if(pending.length === 0){
+    icon.classList.remove("spin");
+    toast("Semua transaksi sudah terkirim");
+    return;
+  }
   let pushed = 0;
   for(const tx of pending){
     const ok = await sendToSheet(tx);
     if(ok){ tx.synced = true; pushed++; }
   }
-  if(pending.length > 0) persistTx();
+  persistTx();
+  icon.classList.remove("spin");
+  renderDashboard();
+  toast(`${pushed}/${pending.length} transaksi terkirim ke Sheet`, pushed < pending.length ? "warn" : undefined);
+});
 
-  // 2) pull: tarik transaksi dari Sheet yang belum ada di cache lokal
+/* ---- pull button: tarik transaksi dari Sheet yang belum ada di cache lokal ---- */
+document.getElementById("btn-pull").addEventListener("click", async ()=>{
+  if(!state.settings.webhookUrl){
+    toast("Atur URL webhook di Pengaturan dulu", "warn");
+    return;
+  }
+  const icon = document.getElementById("pull-icon");
+  icon.classList.add("spin");
+
   const pull = await pullFromSheet();
 
   icon.classList.remove("spin");
   renderDashboard();
 
-  if(!pull.ok && pull.reason !== "no-url"){
-    toast(`${pushed}/${pending.length} terkirim. Gagal menarik data (cek koneksi/deploy GAS)`, "error");
+  if(!pull.ok){
+    toast("Gagal menarik data (cek Webhook URL / deployment GAS)", "error");
+  } else if(pull.added === 0){
+    toast("Tidak ada data baru dari Sheet");
   } else {
-    toast(`${pushed}/${pending.length} terkirim • ${pull.added} baru ditarik dari Sheet`);
+    toast(`${pull.added} transaksi baru ditarik dari Sheet`);
   }
 });
 

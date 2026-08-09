@@ -237,20 +237,27 @@
 
     <!-- ---------- TAB: DASHBOARD ---------- -->
     <section data-tab-panel="dashboard" class="px-4 pt-4">
+      <div class="flex items-center gap-2 mb-3">
+        <input id="dash-date" type="date" class="flex-1 min-w-0 rounded-xl border border-brand-800/10 bg-white px-3 py-2.5 text-[12.5px] font-semibold num focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition">
+        <button id="dash-date-today" class="shrink-0 text-[11px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-3 py-2.5 rounded-xl active:scale-95 transition whitespace-nowrap">Hari Ini</button>
+      </div>
+
       <div class="grid grid-cols-2 gap-2.5 mb-4">
         <div class="rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 text-white p-3.5">
-          <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-100/70">Omzet Hari Ini</p>
+          <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-100/70">Omzet Tanggal Ini</p>
           <p id="stat-today-total" class="num text-[18px] font-extrabold mt-1 leading-none">Rp 0</p>
+          <p id="stat-today-count" class="text-[10px] text-brand-100/70 mt-1 num">0 transaksi</p>
         </div>
         <div class="rounded-2xl bg-white border border-brand-900/10 p-3.5">
-          <p class="text-[10.5px] font-bold uppercase tracking-wide text-ink-soft">Transaksi Tersimpan</p>
+          <p class="text-[10.5px] font-bold uppercase tracking-wide text-ink-soft">Total Cache Lokal</p>
           <p id="stat-total-count" class="num text-[18px] font-extrabold mt-1 leading-none text-brand-800">0<span class="text-[11px] font-semibold text-ink-soft">/100</span></p>
+          <p class="text-[10px] text-ink-soft/70 mt-1">Semua tanggal</p>
         </div>
       </div>
 
-      <div class="flex items-center justify-between mb-2.5">
-        <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Riwayat Transaksi</span>
-        <button id="btn-sync" class="flex items-center gap-1.5 text-[11.5px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition">
+      <div class="flex items-center justify-between mb-2.5 gap-2">
+        <span class="text-[11px] font-bold uppercase tracking-wide text-ink-soft truncate">Riwayat &mdash; <span id="dash-date-label">Hari Ini</span></span>
+        <button id="btn-sync" class="shrink-0 flex items-center gap-1.5 text-[11.5px] font-bold text-brand-700 bg-brand-100/70 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg active:scale-95 transition">
           <svg id="sync-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
           Sinkron
         </button>
@@ -259,8 +266,8 @@
       <div id="tx-list" class="space-y-2"></div>
       <div id="tx-empty" class="flex flex-col items-center justify-center text-center py-14 text-ink-soft/60">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="mb-2 opacity-60"><path d="M3 3v18h18"/><path d="M18.4 8.6 12 15l-3.5-3.5L3 17"/></svg>
-        <p class="text-[12.5px] font-semibold">Belum ada transaksi</p>
-        <p class="text-[11.5px]">Riwayat order akan muncul di sini</p>
+        <p id="tx-empty-title" class="text-[12.5px] font-semibold">Belum ada transaksi</p>
+        <p id="tx-empty-sub" class="text-[11.5px]">Riwayat order akan muncul di sini</p>
       </div>
 
       <div id="pagination" class="hidden items-center justify-between mt-4 pb-2">
@@ -457,6 +464,29 @@
     data.total
   ]);
   return ContentService.createTextOutput('OK');
+}
+
+function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('Transaksi');
+  var lastRow = sheet.getLastRow();
+  var limit = 100;
+  var startRow = Math.max(2, lastRow - limit + 1);
+  var numRows = lastRow - startRow + 1;
+  var rows = numRows > 0
+    ? sheet.getRange(startRow, 1, numRows, 5).getValues()
+    : [];
+  var result = rows.map(function(r) {
+    return {
+      timestamp: r[0],
+      id: r[1],
+      customer: r[2],
+      items: r[3],
+      total: r[4]
+    };
+  }).reverse();
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
 }</pre>
     <button id="btn-copy-gas" class="w-full mt-3 py-2.5 rounded-xl font-bold text-[12.5px] text-brand-700 bg-brand-100">Salin Kode</button>
   </div>
@@ -591,6 +621,7 @@ const state = {
   transactions: [],   // persisted
   settings: { webhookUrl:"", pin:"1234" },
   dashPage: 1,
+  dashDate: "",       // ISO yyyy-mm-dd, set in init() to today
   pinBuffer: "",
   pinMode: "unlock",  // 'unlock'
 };
@@ -614,11 +645,27 @@ function genTxId(){
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, (c)=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
-function isToday(dmyhms){
-  const today = new Date();
+function toISODate(d){
   const pad = (x)=>String(x).padStart(2,"0");
-  const prefix = `${pad(today.getDate())}/${pad(today.getMonth()+1)}/${today.getFullYear()}`;
-  return dmyhms.startsWith(prefix);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function txISODate(tx){
+  // tx.timestamp format: DD/MM/YYYY HH:MM:SS
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(tx.timestamp || "");
+  if(!m) return "";
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+function parseTimestampMs(str){
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(str || "");
+  if(!m) return 0;
+  const [, d, mo, y, h, mi, s] = m;
+  return new Date(Number(y), Number(mo)-1, Number(d), Number(h), Number(mi), Number(s)).getTime();
+}
+function formatDateLabel(iso){
+  if(iso === toISODate(new Date())) return "Hari Ini";
+  const d = new Date(iso + "T00:00:00");
+  if(isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("id-ID", { weekday:"long", day:"numeric", month:"long", year:"numeric" });
 }
 
 /* ---------------- persistence ---------------- */
@@ -929,7 +976,7 @@ function sendToSheet(tx){
     timestamp: tx.timestamp,
     id: tx.id,
     customer: tx.customer,
-    items: tx.items.map(i=>`${i.name} (${i.qty})`).join(", "),
+    items: Array.isArray(tx.items) ? tx.items.map(i=>`${i.name} (${i.qty})`).join(", ") : String(tx.items || ""),
     total: tx.total,
   };
   return fetch(url, {
@@ -940,6 +987,45 @@ function sendToSheet(tx){
   }).then(()=> true).catch(()=> false);
 }
 
+/* Pull rows back from the Google Sheet (via doGet) and merge any that
+   aren't already cached locally. Sheet-origin rows only carry a text
+   summary of items (not per-item price breakdown). */
+async function pullFromSheet(){
+  const url = state.settings.webhookUrl;
+  if(!url) return { ok:false, added:0, reason:"no-url" };
+  try{
+    const res = await fetch(url, { method:"GET" });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const remote = await res.json();
+    if(!Array.isArray(remote)) throw new Error("format tidak sesuai");
+
+    const localIds = new Set(state.transactions.map(t=>t.id));
+    let added = 0;
+    remote.forEach(r=>{
+      if(!r || !r.id || localIds.has(String(r.id))) return;
+      state.transactions.push({
+        id: String(r.id),
+        timestamp: String(r.timestamp || ""),
+        customer: String(r.customer || "Customer Umum"),
+        items: String(r.items || "-"),
+        total: Number(r.total) || 0,
+        synced: true,
+      });
+      localIds.add(String(r.id));
+      added++;
+    });
+
+    if(added > 0){
+      state.transactions.sort((a,b)=> parseTimestampMs(b.timestamp) - parseTimestampMs(a.timestamp));
+      if(state.transactions.length > MAX_CACHE) state.transactions.length = MAX_CACHE;
+      persistTx();
+    }
+    return { ok:true, added };
+  }catch(e){
+    return { ok:false, added:0, reason: String(e.message || e) };
+  }
+}
+
 /* ---- receipt modal ---- */
 const modalReceipt = document.getElementById("modal-receipt");
 function openReceipt(tx){
@@ -947,12 +1033,14 @@ function openReceipt(tx){
   document.getElementById("rc-time").textContent = tx.timestamp;
   document.getElementById("rc-customer").textContent = tx.customer;
   document.getElementById("rc-total").textContent = formatRupiah(tx.total);
-  document.getElementById("rc-items").innerHTML = tx.items.map(i => `
-    <div class="flex justify-between gap-2">
-      <span class="truncate">${escapeHtml(i.name)} <span class="text-ink-soft">x${i.qty}</span></span>
-      <span class="shrink-0 font-semibold">${formatRupiah(i.price * i.qty)}</span>
-    </div>
-  `).join("");
+  document.getElementById("rc-items").innerHTML = Array.isArray(tx.items)
+    ? tx.items.map(i => `
+        <div class="flex justify-between gap-2">
+          <span class="truncate">${escapeHtml(i.name)} <span class="text-ink-soft">x${i.qty}</span></span>
+          <span class="shrink-0 font-semibold">${formatRupiah(i.price * i.qty)}</span>
+        </div>
+      `).join("")
+    : `<div class="text-ink-soft">${escapeHtml(String(tx.items || "-"))}</div>`;
   showModal(modalReceipt);
 }
 document.getElementById("rc-close").addEventListener("click", ()=> hideModal(modalReceipt));
@@ -960,9 +1048,6 @@ document.getElementById("rc-print").addEventListener("click", ()=> window.print(
 
 /* ================= DASHBOARD ================= */
 function renderDashboardStatsOnly(){
-  const todayTx = state.transactions.filter(t => isToday(t.timestamp));
-  const todayTotal = todayTx.reduce((s,t)=> s + t.total, 0);
-  document.getElementById("stat-today-total").textContent = formatRupiah(todayTotal);
   document.getElementById("stat-total-count").innerHTML = state.transactions.length + '<span class="text-[11px] font-semibold text-ink-soft">/100</span>';
   document.getElementById("cache-info").textContent = `${state.transactions.length} / ${MAX_CACHE} transaksi`;
 }
@@ -970,31 +1055,47 @@ function renderDashboardStatsOnly(){
 function renderDashboard(){
   renderDashboardStatsOnly();
 
+  const iso = state.dashDate || toISODate(new Date());
+  document.getElementById("dash-date-label").textContent = formatDateLabel(iso);
+
+  const dayTx = state.transactions.filter(t => txISODate(t) === iso);
+  const dayTotal = dayTx.reduce((s,t)=> s + t.total, 0);
+  document.getElementById("stat-today-total").textContent = formatRupiah(dayTotal);
+  document.getElementById("stat-today-count").textContent = `${dayTx.length} transaksi`;
+
   const list = document.getElementById("tx-list");
   const empty = document.getElementById("tx-empty");
   const pagination = document.getElementById("pagination");
+  const emptyTitle = document.getElementById("tx-empty-title");
+  const emptySub = document.getElementById("tx-empty-sub");
 
-  if(state.transactions.length === 0){
+  if(dayTx.length === 0){
     list.innerHTML = "";
     empty.style.display = "flex";
     pagination.classList.add("hidden");
     pagination.classList.remove("flex");
+    if(state.transactions.length === 0){
+      emptyTitle.textContent = "Belum ada transaksi";
+      emptySub.textContent = "Riwayat order akan muncul di sini";
+    } else {
+      emptyTitle.textContent = "Tidak ada transaksi";
+      emptySub.textContent = "Tidak ada penjualan pada tanggal ini";
+    }
     return;
   }
   empty.style.display = "none";
 
-  const totalPages = Math.max(1, Math.ceil(state.transactions.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(dayTx.length / PAGE_SIZE));
   if(state.dashPage > totalPages) state.dashPage = totalPages;
   const start = (state.dashPage - 1) * PAGE_SIZE;
-  const pageItems = state.transactions.slice(start, start + PAGE_SIZE);
+  const pageItems = dayTx.slice(start, start + PAGE_SIZE);
 
   list.innerHTML = pageItems.map((t) => {
-    const idx = state.transactions.indexOf(t);
     const badge = t.synced
       ? `<span class="text-[9.5px] font-bold text-brand-700 bg-brand-100 px-1.5 py-0.5 rounded-full">Terkirim</span>`
       : `<span class="text-[9.5px] font-bold text-gold bg-gold/15 px-1.5 py-0.5 rounded-full">Lokal</span>`;
     return `
-    <button data-tx="${idx}" class="w-full text-left flex items-center gap-3 bg-white border border-brand-900/8 rounded-xl px-3.5 py-3 active:bg-brand-50 transition">
+    <button data-tx-id="${escapeHtml(t.id)}" class="w-full text-left flex items-center gap-3 bg-white border border-brand-900/8 rounded-xl px-3.5 py-3 active:bg-brand-50 transition">
       <div class="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center shrink-0 font-extrabold text-[11px] num">${t.id.replace("WR-","")}</div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
@@ -1007,8 +1108,11 @@ function renderDashboard(){
     </button>`;
   }).join("");
 
-  list.querySelectorAll("[data-tx]").forEach(b=>{
-    b.addEventListener("click", ()=> openReceipt(state.transactions[Number(b.dataset.tx)]));
+  list.querySelectorAll("[data-tx-id]").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const tx = state.transactions.find(t => t.id === b.dataset.txId);
+      if(tx) openReceipt(tx);
+    });
   });
 
   pagination.classList.remove("hidden");
@@ -1020,6 +1124,19 @@ function renderDashboard(){
 document.getElementById("page-prev").addEventListener("click", ()=>{ state.dashPage--; renderDashboard(); });
 document.getElementById("page-next").addEventListener("click", ()=>{ state.dashPage++; renderDashboard(); });
 
+document.getElementById("dash-date").addEventListener("change", (e)=>{
+  state.dashDate = e.target.value || toISODate(new Date());
+  state.dashPage = 1;
+  renderDashboard();
+});
+document.getElementById("dash-date-today").addEventListener("click", ()=>{
+  const iso = toISODate(new Date());
+  document.getElementById("dash-date").value = iso;
+  state.dashDate = iso;
+  state.dashPage = 1;
+  renderDashboard();
+});
+
 /* ---- sync button ---- */
 document.getElementById("btn-sync").addEventListener("click", async ()=>{
   if(!state.settings.webhookUrl){
@@ -1028,22 +1145,27 @@ document.getElementById("btn-sync").addEventListener("click", async ()=>{
   }
   const icon = document.getElementById("sync-icon");
   icon.classList.add("spin");
+
+  // 1) push: kirim transaksi lokal yang belum tersinkron
   const pending = state.transactions.filter(t => !t.synced);
-  if(pending.length === 0){
-    icon.classList.remove("spin");
-    renderDashboard();
-    toast("Semua transaksi sudah tersinkron");
-    return;
-  }
-  let success = 0;
+  let pushed = 0;
   for(const tx of pending){
     const ok = await sendToSheet(tx);
-    if(ok){ tx.synced = true; success++; }
+    if(ok){ tx.synced = true; pushed++; }
   }
-  persistTx();
+  if(pending.length > 0) persistTx();
+
+  // 2) pull: tarik transaksi dari Sheet yang belum ada di cache lokal
+  const pull = await pullFromSheet();
+
   icon.classList.remove("spin");
   renderDashboard();
-  toast(`${success}/${pending.length} transaksi tersinkron`);
+
+  if(!pull.ok && pull.reason !== "no-url"){
+    toast(`${pushed}/${pending.length} terkirim. Gagal menarik data (cek koneksi/deploy GAS)`, "error");
+  } else {
+    toast(`${pushed}/${pending.length} terkirim • ${pull.added} baru ditarik dari Sheet`);
+  }
 });
 
 /* ================= PIN MODAL ================= */
@@ -1182,6 +1304,8 @@ document.querySelectorAll(".modal-backdrop").forEach(m=>{
 /* ================= INIT ================= */
 function init(){
   loadState();
+  state.dashDate = toISODate(new Date());
+  document.getElementById("dash-date").value = state.dashDate;
   renderProductGrid();
   setupFullMenuSearch();
   renderCart();

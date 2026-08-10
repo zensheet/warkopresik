@@ -423,7 +423,15 @@
 
     <p class="text-[11px] font-bold uppercase tracking-wide text-ink-soft mb-1.5">Webhook Google Apps Script</p>
     <input id="setting-webhook" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full rounded-xl border border-brand-800/10 bg-paper px-3.5 py-2.5 text-[12.5px] font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/40 mb-2">
-    <button id="btn-show-gas" class="text-[11px] font-bold text-brand-700 mb-4 active:opacity-60">Lihat contoh script Google Apps Script &rsaquo;</button>
+    <div class="flex items-center gap-2 mb-2">
+      <button id="btn-show-gas" class="text-[11px] font-bold text-brand-700 active:opacity-60">Lihat contoh script &rsaquo;</button>
+      <span class="text-ink-soft/30">&middot;</span>
+      <button id="btn-test-connection" class="flex items-center gap-1.5 text-[11px] font-bold text-brand-700 active:opacity-60">
+        <svg id="test-connection-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        Uji Koneksi
+      </button>
+    </div>
+    <div id="test-connection-result" class="hidden text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4"></div>
 
     <div class="h-px bg-brand-900/10 my-1 mb-4"></div>
 
@@ -984,8 +992,8 @@ function saveTransaction(){
   });
 }
 
-function sendToSheet(tx){
-  const url = state.settings.webhookUrl;
+function sendToSheet(tx, urlOverride){
+  const url = urlOverride || state.settings.webhookUrl;
   if(!url) return Promise.resolve(false);
   const payload = {
     timestamp: tx.timestamp,
@@ -1043,9 +1051,9 @@ function jsonpRequest(url, timeoutMs){
   });
 }
 
-async function pullFromSheet(){
-  const url = state.settings.webhookUrl;
-  if(!url) return { ok:false, added:0, reason:"no-url" };
+async function pullFromSheet(urlOverride){
+  const url = urlOverride || state.settings.webhookUrl;
+  if(!url) return { ok:false, added:0, raw:[], reason:"no-url" };
   try{
     const remote = await jsonpRequest(url);
     if(!Array.isArray(remote)){
@@ -1074,9 +1082,9 @@ async function pullFromSheet(){
       if(state.transactions.length > MAX_CACHE) state.transactions.length = MAX_CACHE;
       persistTx();
     }
-    return { ok:true, added };
+    return { ok:true, added, raw: remote };
   }catch(e){
-    return { ok:false, added:0, reason: String(e.message || e) };
+    return { ok:false, added:0, raw:[], reason: String(e.message || e) };
   }
 }
 
@@ -1339,6 +1347,57 @@ document.getElementById("gas-close").addEventListener("click", ()=> hideModal(mo
 document.getElementById("btn-copy-gas").addEventListener("click", ()=>{
   const code = document.getElementById("gas-code").textContent;
   navigator.clipboard?.writeText(code).then(()=> toast("Kode disalin")).catch(()=> toast("Gagal menyalin", "error"));
+});
+
+/* ---- uji koneksi: push 1 baris tes, lalu pull & cek beneran nyampe ---- */
+document.getElementById("btn-test-connection").addEventListener("click", async ()=>{
+  const url = document.getElementById("setting-webhook").value.trim();
+  const resultBox = document.getElementById("test-connection-result");
+  const icon = document.getElementById("test-connection-icon");
+
+  if(!url){
+    toast("Isi Webhook URL dulu", "warn");
+    return;
+  }
+  if(!/^https:\/\//i.test(url)){
+    toast("URL webhook tidak valid", "error");
+    return;
+  }
+
+  icon.classList.add("spin");
+  resultBox.className = "text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4 bg-paper text-ink-soft";
+  resultBox.textContent = "Menguji koneksi\u2026 (kirim 1 baris tes lalu memverifikasi)";
+  resultBox.classList.remove("hidden");
+
+  const testId = "WR-TEST" + Math.floor(1000 + Math.random()*9000);
+  const testTx = {
+    id: testId,
+    timestamp: nowStamp(),
+    customer: "(Uji Koneksi)",
+    items: [{ name:"Tes Koneksi — boleh dihapus", qty:1, price:0 }],
+    total: 0,
+  };
+
+  const pushResolved = await sendToSheet(testTx, url); // hanya berarti request terkirim tanpa error jaringan
+  await new Promise(r => setTimeout(r, 1500)); // beri waktu Sheet mencatat sebelum ditarik lagi
+  const pull = await pullFromSheet(url);
+  icon.classList.remove("spin");
+
+  const found = pull.ok && Array.isArray(pull.raw) && pull.raw.some(r => String(r.id) === testId);
+
+  if(found){
+    resultBox.className = "text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4 bg-brand-100/70 text-brand-800 font-semibold";
+    resultBox.textContent = "✅ Push & Pull berhasil — data tes sudah tercatat di Sheet dan berhasil ditarik balik. Baris tes (\"" + testId + "\") boleh kamu hapus manual dari Sheet.";
+  } else if(!pushResolved){
+    resultBox.className = "text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4 bg-red-50 text-red-600 font-semibold";
+    resultBox.textContent = "❌ Push gagal terkirim (error jaringan). Cek koneksi internet dan URL webhook.";
+  } else if(!pull.ok){
+    resultBox.className = "text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4 bg-red-50 text-red-600 font-semibold";
+    resultBox.textContent = "❌ Pull gagal (" + (pull.reason || "tidak diketahui") + "). Kemungkinan: deployment belum di-\"New version\", atau akses bukan \"Anyone\".";
+  } else {
+    resultBox.className = "text-[11px] leading-relaxed rounded-xl px-3 py-2.5 mb-4 bg-gold/15 text-gold font-semibold";
+    resultBox.textContent = "⚠️ Pull jalan tapi data tes tidak ketemu di Sheet — kemungkinan doPost gagal, nama tab bukan \"Transaksi\", atau salah spreadsheet yang dibuka.";
+  }
 });
 
 /* ================= MODAL HELPERS ================= */

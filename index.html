@@ -1051,11 +1051,39 @@ function jsonpRequest(url, timeoutMs){
   });
 }
 
+/* Plain fetch with a timeout — works even if the deployed doGet doesn't
+   support the ?callback= JSONP wrapper yet (older script versions),
+   as long as the browser doesn't hit a CORS block. Tried first because
+   it's faster; JSONP below is the guaranteed-compatible fallback. */
+function fetchJsonWithTimeout(url, timeoutMs){
+  return new Promise((resolve, reject)=>{
+    const controller = new AbortController();
+    const timer = setTimeout(()=>{ controller.abort(); }, timeoutMs || 6000);
+    fetch(url, { method:"GET", signal: controller.signal })
+      .then(res=>{
+        clearTimeout(timer);
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(resolve)
+      .catch(err=>{ clearTimeout(timer); reject(err); });
+  });
+}
+
 async function pullFromSheet(urlOverride){
   const url = urlOverride || state.settings.webhookUrl;
   if(!url) return { ok:false, added:0, raw:[], reason:"no-url" };
+  let remote;
   try{
-    const remote = await jsonpRequest(url);
+    remote = await fetchJsonWithTimeout(url, 6000);
+  }catch(fetchErr){
+    try{
+      remote = await jsonpRequest(url, 12000);
+    }catch(jsonpErr){
+      return { ok:false, added:0, raw:[], reason: String(jsonpErr.message || jsonpErr) };
+    }
+  }
+  try{
     if(!Array.isArray(remote)){
       if(remote && remote.ok === false) throw new Error(remote.error || "GAS mengembalikan error");
       throw new Error("format tidak sesuai — pastikan doGet() sudah versi terbaru");
